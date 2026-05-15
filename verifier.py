@@ -158,7 +158,7 @@ def verify_seal(original_path, test_path):
         # FINAL VERDICT
         # ==========================================
 
-        if normalized_score > 75:
+        if normalized_score > 70:
             verdict = "GENUINE SEAL"
 
         elif normalized_score > 50:
