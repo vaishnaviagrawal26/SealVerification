@@ -8,6 +8,8 @@ import streamlit as st
 from app.model.verifier import verify_seal
 from PIL import Image
 import os
+import cv2
+import numpy as np
 
 st.set_page_config(
     page_title="Seal Verification System",
@@ -33,28 +35,27 @@ if st.button("Verify Seal"):
 
     if original_file and test_file:
 
-        # Create folders
+        # Create directories
         os.makedirs("input", exist_ok=True)
         os.makedirs("output", exist_ok=True)
 
-        original_path = "input/original.jpg"
-        test_path = "input/test.jpg"
+        # Save original image to disk (for verification)
+        original_path = f"input/original_{original_file.name}"
+        with open(original_path, "wb") as f:
+            f.write(original_file.read())
+        
+        print(f"Original image saved: {original_path}")
 
-        # Save uploaded files
-        from PIL import Image
+        # Read test image into numpy array (no disk save)
+        test_bytes = test_file.read()
+        test_image_np = cv2.imdecode(np.frombuffer(test_bytes, np.uint8), cv2.IMREAD_COLOR)
 
-        # Save original image properly
-        original_image = Image.open(original_file)
-        original_image.save(original_path)
-
-        # Save test image properly
-        test_image = Image.open(test_file)
-        test_image.save(test_path)
+        print(f"Test image loaded to memory")
 
         # Verify
         result = verify_seal(
             original_path,
-            test_path
+            test_image_np
         )
 
         if result:
@@ -81,7 +82,7 @@ if st.button("Verify Seal"):
             )
 
             st.image(output_img)
-
+        
         else:
             st.error("Error processing images")
 

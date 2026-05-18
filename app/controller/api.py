@@ -7,9 +7,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 import shutil
 import os
+import cv2
+import numpy as np
 
 from app.model.verifier import verify_seal
 
@@ -62,35 +63,34 @@ async def verify_seal_endpoint(
     - output_image: Path to the result image with feature matches highlighted
     """
     
+    original_path = None
+    
     try:
-        # Ensure input directory exists
-        input_dir = Path("input")
-        input_dir.mkdir(exist_ok=True)
+        # Create directories
+        os.makedirs("input", exist_ok=True)
+        os.makedirs("output", exist_ok=True)
         
-        # Ensure output directory exists
-        output_dir = Path("output")
-        output_dir.mkdir(exist_ok=True)
-        
-        # Save uploaded files temporarily
+        # Save original image to disk (for verification/comparison)
         original_path = f"input/original_{original_image.filename}"
-        test_path = f"input/test_{test_image.filename}"
-        
-        # Save original image
         with open(original_path, "wb") as buffer:
             shutil.copyfileobj(original_image.file, buffer)
         
-        # Save test image
-        with open(test_path, "wb") as buffer:
-            shutil.copyfileobj(test_image.file, buffer)
+        print(f"Original image saved: {original_path}")
+        
+        # Read test image directly into memory as numpy array (no disk save)
+        test_bytes = await test_image.read()
+        test_image_np = cv2.imdecode(np.frombuffer(test_bytes, np.uint8), cv2.IMREAD_COLOR)
+        
+        print(f"Test image loaded to memory. Shape: {test_image_np.shape if test_image_np is not None else 'None'}")
+        
+        if test_image_np is None:
+            raise Exception("Test image could not be decoded. Invalid image format.")
         
         # Verify seal
-        result = verify_seal(original_path, test_path)
+        print(f"Starting verification...")
+        result = verify_seal(original_path, test_image_np)
         
-        if result is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Verification failed. Please ensure both images are valid and in proper format."
-            )
+        print(f"Verification result: {result}")
         
         # Return result with additional metadata
         return {
@@ -103,19 +103,17 @@ async def verify_seal_endpoint(
     except HTTPException:
         raise
     except Exception as e:
+        print(f"ERROR: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
-            status_code=500,
-            detail=f"Error during verification: {str(e)}"
+            status_code=400,
+            detail=f"Error: {str(e)}"
         )
     finally:
-        # Cleanup uploaded files
-        try:
-            if os.path.exists(original_path):
-                os.remove(original_path)
-            if os.path.exists(test_path):
-                os.remove(test_path)
-        except:
-            pass
+        # Note: Original image is kept in input/ folder for later verification
+        # Only cleanup if there was an error
+        pass
 
 # ==========================================
 # GET RESULT IMAGE ENDPOINT

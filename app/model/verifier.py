@@ -6,19 +6,25 @@ import numpy as np
 # VERIFY SEAL
 # ==========================================
 
-def verify_seal(original_path, test_path):
+def verify_seal(original_path, test_image_np):
 
     try:
-
-        # ==========================================
-        # LOAD IMAGES
-        # ==========================================
-
+        # Load original image from disk
         img1 = cv2.imread(original_path)
-        img2 = cv2.imread(test_path)
-
-        if img1 is None or img2 is None:
-            return None
+        img2 = test_image_np
+        
+        if img1 is None:
+            raise Exception(f"Original image could not be read from: {original_path}")
+        
+        if img2 is None:
+            raise Exception("Test image is None")
+        
+        # Ensure arrays are proper numpy arrays with correct dtype
+        img1 = np.asarray(img1, dtype=np.uint8)
+        img2 = np.asarray(img2, dtype=np.uint8)
+        
+        if img1.size == 0 or img2.size == 0:
+            raise Exception("One or both images are empty")
 
         # ==========================================
         # RESIZE IMAGES
@@ -186,7 +192,7 @@ def verify_seal(original_path, test_path):
         }
 
     except Exception as e:
-
-        print("Verification Error:", e)
-
-        return None
+        print(f"Verifier Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
