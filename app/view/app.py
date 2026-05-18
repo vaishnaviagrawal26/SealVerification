@@ -1,5 +1,11 @@
+import sys
+from pathlib import Path
+
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 import streamlit as st
-from verifier import verify_seal
+from app.model.verifier import verify_seal
 from PIL import Image
 import os
 

@@ -1,12 +1,17 @@
+import sys
+from pathlib import Path
+
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import shutil
 import os
-from pathlib import Path
 
-from verifier import verify_seal
+from app.model.verifier import verify_seal
 
 # ==========================================
 # CREATE FASTAPI APP
