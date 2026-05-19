@@ -11,6 +11,7 @@ import shutil
 import os
 import cv2
 import numpy as np
+import uuid
 
 from app.model.verifier import verify_seal
 
@@ -37,6 +38,40 @@ app.add_middleware(
 )
 
 # ==========================================
+# S3 UPLOAD FUNCTION
+# ==========================================
+
+async def upload_file_to_s3(file: UploadFile, folder_path: str = "Dairy/upload/files") -> str:
+    """
+    Upload a file to S3 via the SecuTrak API.
+    
+    Args:
+        file: The file to upload
+        folder_path: S3 folder path
+        
+    Returns:
+        S3 URL of the uploaded file
+    """
+    import httpx
+    
+    file_name = file.filename
+    content_type = file.content_type
+    file_bytes = await file.read()
+
+    unique_reference = uuid.uuid4().hex
+    filepath = f"{folder_path}/{unique_reference}_{file_name}"
+
+    url = "https://api-py.secutrak.in/api/uploadfiletos3/"
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            url,
+            data={"filepath": filepath},
+            files={"file": (file_name, file_bytes, content_type)}
+        )
+        return response.json()["url"]
+
+# ==========================================
 # HEALTH CHECK ENDPOINT
 # ==========================================
 
@@ -57,27 +92,33 @@ async def verify_seal_endpoint(
     """
     Verify seal authenticity by comparing two images.
     
+    Workflow:
+    1. Upload original image to S3
+    2. Download from S3 URL for verification
+    3. Load test image into memory
+    4. Compare images
+    
     Returns:
     - match_percent: Similarity percentage (0-100)
     - verdict: Classification result (GENUINE SEAL, SUSPICIOUS SEAL, or TAMPERED SEAL)
     - output_image: Path to the result image with feature matches highlighted
+    - original_image_s3_url: S3 URL of the uploaded original image
     """
     
-    original_path = None
+    original_s3_url = None
     
     try:
-        # Create directories
-        os.makedirs("input", exist_ok=True)
+        # Create output directory
         os.makedirs("output", exist_ok=True)
         
-        # Save original image to disk (for verification/comparison)
-        original_path = f"input/original_{original_image.filename}"
-        with open(original_path, "wb") as buffer:
-            shutil.copyfileobj(original_image.file, buffer)
+        print(f"Starting seal verification workflow...")
         
-        print(f"Original image saved: {original_path}")
+        # Step 1: Upload original image to S3
+        print(f"Uploading original image to S3...")
+        original_s3_url = await upload_file_to_s3(original_image)
+        print(f"Original image uploaded to S3: {original_s3_url}")
         
-        # Read test image directly into memory as numpy array (no disk save)
+        # Step 2: Read test image into memory
         test_bytes = await test_image.read()
         test_image_np = cv2.imdecode(np.frombuffer(test_bytes, np.uint8), cv2.IMREAD_COLOR)
         
@@ -86,9 +127,9 @@ async def verify_seal_endpoint(
         if test_image_np is None:
             raise Exception("Test image could not be decoded. Invalid image format.")
         
-        # Verify seal
-        print(f"Starting verification...")
-        result = verify_seal(original_path, test_image_np)
+        # Step 3: Verify seal using S3 URL for original image
+        print(f"Starting verification with S3 URL: {original_s3_url}")
+        result = verify_seal(original_s3_url, test_image_np)
         
         print(f"Verification result: {result}")
         
@@ -97,6 +138,7 @@ async def verify_seal_endpoint(
             **result,
             "message": "Seal verification completed successfully",
             "original_image": original_image.filename,
+            "original_image_s3_url": original_s3_url,
             "test_image": test_image.filename
         }
     
@@ -110,10 +152,6 @@ async def verify_seal_endpoint(
             status_code=400,
             detail=f"Error: {str(e)}"
         )
-    finally:
-        # Note: Original image is kept in input/ folder for later verification
-        # Only cleanup if there was an error
-        pass
 
 # ==========================================
 # GET RESULT IMAGE ENDPOINT

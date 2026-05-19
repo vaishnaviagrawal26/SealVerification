@@ -3,18 +3,52 @@ import numpy as np
 
 
 # ==========================================
+# HELPER FUNCTION: DOWNLOAD IMAGE FROM S3 OR LOAD FROM LOCAL PATH
+# ==========================================
+
+def get_image_data(image_source):
+    """
+    Get image data from either an S3 URL or a local file path.
+    
+    Args:
+        image_source: Either an S3 URL (http/https) or a local file path
+        
+    Returns:
+        numpy array of the image
+    """
+    try:
+        if isinstance(image_source, str) and (image_source.startswith("http://") or image_source.startswith("https://")):
+            # Download from S3 URL (lazy import)
+            import httpx
+            print(f"Downloading image from S3: {image_source}")
+            response = httpx.get(image_source)
+            response.raise_for_status()
+            img = cv2.imdecode(np.frombuffer(response.content, np.uint8), cv2.IMREAD_COLOR)
+            print(f"Image downloaded successfully. Shape: {img.shape if img is not None else 'None'}")
+            return img
+        else:
+            # Load from local file path
+            print(f"Loading image from local path: {image_source}")
+            img = cv2.imread(image_source)
+            return img
+    except Exception as e:
+        print(f"Error loading image from {image_source}: {e}")
+        raise
+
+
+# ==========================================
 # VERIFY SEAL
 # ==========================================
 
-def verify_seal(original_path, test_image_np):
+def verify_seal(original_source, test_image_np):
 
     try:
-        # Load original image from disk
-        img1 = cv2.imread(original_path)
+        # Load original image from S3 URL or local path
+        img1 = get_image_data(original_source)
         img2 = test_image_np
         
         if img1 is None:
-            raise Exception(f"Original image could not be read from: {original_path}")
+            raise Exception(f"Original image could not be read from: {original_source}")
         
         if img2 is None:
             raise Exception("Test image is None")
